@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+
+
+
+    <!-- Search view -->
+    <record id="view_saatchi_customized_accrued_revenue_search" model="ir.ui.view">
+        <field name="name">saatchi.accrued_revenue.search</field>
+        <field name="model">saatchi.accrued_revenue</field>
+        <field name="arch" type="xml">
+            <search string="Search Accrued Revenues">
+                <field name="ce_code"/>
+                <field name="ce_partner_id"/>
+                <field name="ce_status"/>
+                <field name="state"/>
+
+                <filter string="Draft" name="filter_draft" domain="[('state','=','draft')]" help="Show draft accrued revenues"/>
+                <filter string="Accrued" name="filter_accrued" domain="[('state','=','accrued')]" help="Show accrued entries"/>
+                <filter string="Reversed" name="filter_reversed" domain="[('state','=','reversed')]" help="Show reversed entries"/>
+
+                <group expand="0" string="Group By">
+                    <filter string="Status" name="state" context="{'group_by': 'state'}"/>
+                    <filter string="Client" name="name" context="{'group_by': 'ce_partner_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+
+    <!-- List view -->
+    <record id="view_saatchi_customized_accrued_revenue_list" model="ir.ui.view">
+        <field name="name">saatchi.accrued_revenue.list</field>
+        <field name="model">saatchi.accrued_revenue</field>
+        <field name="arch" type="xml">
+            <list string="Accrued Revenues" js_class="button_in_list">
+                <header>
+                    <button string="Create Entries" name="create_multiple_entries" type="object"/>
+                </header>
+    
+                <field name="currency_id" column_invisible="1"/>
+    
+                <field name="display_name" string="Name"/>
+                <field name="x_related_ce_id"/>
+                <field name="ce_partner_id"/>
+                <field name="ce_code"/>
+                <field name="date"/>
+                <field name="reversal_date"/>
+                <field name="ce_job_description"/>
+                <field name="total_amount_accrued" widget="monetary"
+                       options="{'currency_field': 'currency_id'}"/>
+                <field name="ce_status"/>
+                <field name="x_accrual_system_generated"/>
+                <field name="is_adjustment_entry"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-warning="state == 'accrued'"
+                       decoration-success="state == 'reversed'"
+                       decoration-danger="state == 'cancel'"/>
+            </list>
+        </field>
+    </record>
+
+
+    <!-- Form view -->
+    <record id="view_saatchi_customized_accrued_revenue_form" model="ir.ui.view">
+        <field name="name">saatchi.accrued_revenue.form</field>
+        <field name="model">saatchi.accrued_revenue</field>
+        <field name="arch" type="xml">
+            <form string="Accrued Revenue">
+            <header>
+                <button name="create_entries"
+                        type="object"
+                        string="Create Entry"
+                        class="btn-primary"
+                        invisible="state != 'draft'"
+                    />
+                <field name="state" widget="statusbar"
+                       statusbar_visible="draft,accrued,reversed"
+                       statusbar_colors="{'draft': 'blue', 'accrued': 'green', 'reversed': 'green', 'cancel': 'green'}"/>
+            </header>
+                <sheet>
+                <div class="oe_button_box" name="button_box">
+                    <!-- Journal Entries -->
+                    <button name="action_open_journal_entries"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-book">
+                        <div class="o_stat_info">
+                            <span class="o_stat_text">Journal Entries</span>
+                        </div>
+                    </button>
+                </div>
+                    <group>
+
+                         <group>
+                            <field name="x_related_ce_id"/>
+                            <field name="ce_partner_id"/>
+                            <field name="ce_code"/>
+                            <field name="ce_status"/>
+                            <field name="ce_job_description"/>
+                            <field name="currency_id" invisible="1"/>
+
+                            <field name="ce_original_total_amount" widget="monetary" options="{'currency_field': 'currency_id'}" readonly="1"/>
+                             <field name="x_accrual_system_generated" readonly="state not in ['draft']"/>
+                             <!-- <field name="remarks"/> -->
+                        </group>
+                         <group>
+                            <field name="journal_id" readonly="state not in ['draft']"/>
+                            <field name="accrual_account_id" readonly="state not in ['draft']"/>
+                            <field name="date" readonly="state not in ['draft']"/>
+                            <field name="reversal_date" readonly="state not in ['draft']"/>
+                            <field name="related_accrued_entry" invisible="not related_accrued_entry"/>
+                            <field name="related_reverse_accrued_entry" invisible="not related_reverse_accrued_entry"/>
+                        </group>
+                    </group>
+                    <group>
+
+                        <notebook>
+                            <page string="Accrued Lines">
+                                <field name="line_ids" readonly="state not in ['draft']">
+                                    <list editable="bottom" create="0">
+                                        <field name="state" column_invisible="1"/>
+                                        <field name="sequence" widget="handle"/>
+                                        <field name="account_id"/>
+                                        <field name="ce_line_id"/>
+                                        <field name="analytic_distribution" widget="analytic_distribution" readonly="1"/>
+                                        <field name="label"/>
+                                        <field name="debit" sum="Total Debit"/>
+                                        <field name="credit" sum="Total Credit"/>
+                                    </list>
+                                </field>
+                            </page>
+                        </notebook>
+
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+
+
+    <record id="view_order_form_inherit_sale_order" model="ir.ui.view">
+      <field name="name">sale.order.form.inherit.accrued_revenue</field>
+      <field name="model">sale.order</field>
+      <field name="inherit_id" ref="sale.view_order_form"/>
+      <field name="arch" type="xml">
+        
+        <xpath expr="//field[@name='partner_id']" position="after">
+         <field name="x_ce_code" readonly="1" />
+         <field name="x_ce_status" readonly="state in ['cancel', 'sale']"/>
+         <field name="x_job_description" readonly="state in ['cancel', 'sale']"/>
+         <field name="x_job_number" readonly="state in ['cancel', 'sale']"/>
+        </xpath>
+        
+      </field>
+    </record>
+
+    <!-- Action for the model -->
+    <record id="action_saatchi_customized_accrued_revenue" model="ir.actions.act_window">
+        <field name="name">Accrued Revenues</field>
+        <field name="res_model">saatchi.accrued_revenue</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_saatchi_customized_accrued_revenue_search"/> 
+        <field name="context">{'search_default_filter_draft': 1}</field>
+        <field name="domain">[]</field>
+    </record>
+
+
+    <!-- Menu item under Sales Orders -->
+    <menuitem id="menu_saatchi_customized_accrued_revenue"
+              name="Accrued Revenue"
+              parent="sale.sale_order_menu"
+              sequence="25"
+              action="action_saatchi_customized_accrued_revenue"/>
+
+
+    
+    <record id="view_accrued_revenue_journal_items_list" model="ir.ui.view">
+            <field name="name">account.move.line</field>
+            <field name="model">account.move.line</field>
+            <field name="arch" type="xml">
+                <list name="move_line_tree" string="Journal Items" create="false" edit="true" expand="context.get('expand', False)" multi_edit="1" sample="1" open_form_view="True">
+                    <field name="move_id" column_invisible="True"/>
+                    <field name="invoice_date" string="Invoice Date" optional="hide"/>
+                    <field name="date" readonly="1"/>
+                    <field name="company_id" column_invisible="True"/>
+                    <field name="company_id" groups="base.group_multi_company" readonly="1" optional="hide"/>
+                    <field name="journal_id" readonly="1" options="{&quot;no_open&quot;:True}" optional="hide"/>
+                    <field name="move_name" string="Journal Entry" widget="open_move_widget"/>
+                    <field name="account_id" options="{'no_open': True, 'no_create': True}" domain="[('deprecated', '=', False), ('company_ids', 'parent_of', company_id)]" groups="account.group_account_readonly"/>
+                    <field name="partner_id" optional="show" readonly="move_type != 'entry'"/>
+                    <field name="ref" optional="hide" readonly="False"/>
+                    <field name="product_id" readonly="1" optional="hide"/>
+                    <field name="name" optional="show"/>
+                    <field name="analytic_distribution" widget="analytic_distribution" groups="analytic.group_analytic_accounting" optional="hide" options="{'product_field': 'product_id', 'account_field': 'account_id', 'force_applicability': 'optional', 'multi_edit': true}"/>
+                    <field name="tax_ids" widget="many2many_tags" optional="hide" readonly="1"/>
+                    <field name="amount_currency" string="In Currency" groups="base.group_multi_currency" optional="hide" readonly="1" invisible="is_same_currency"/>
+                    <field name="currency_id" groups="base.group_multi_currency" optional="hide" string="Currency" readonly="1" invisible="is_same_currency"/>
+                    <field name="debit" sum="Total Debit" readonly="1"/>
+                    <field name="credit" sum="Total Credit" readonly="1"/>
+                    <field name="tax_tag_ids" string="Tax Grids" options="{'no_create': True, 'no_create_edit': True}" domain="[('applicability', '=', 'taxes')]" widget="many2many_tags" optional="hide"/>
+                    <field name="discount_date" string="Discount Date" optional="hide"/>
+                    <field name="discount_amount_currency" string="Discount Amount" optional="hide"/>
+                    <field name="tax_line_id" string="Originator Tax" optional="hide" readonly="1"/>
+                    <field name="date_maturity" readonly="1" optional="hide"/>
+                    <field name="balance" sum="Total Balance" optional="hide" readonly="1"/>
+                    <field name="matching_number" string="Matching" readonly="1" optional="show" widget="matching_link_widget"/>
+                    <field name="amount_residual" sum="Total Residual" string="Residual" optional="hide" readonly="1" invisible="not is_account_reconcile"/>
+                    <field name="amount_residual_currency" sum="Total Residual in Currency" string="Residual in Currency" optional="hide" readonly="1" invisible="is_same_currency or not is_account_reconcile" groups="base.group_multi_currency"/>
+                    <field name="move_type" column_invisible="True"/>
+                    <field name="parent_state" column_invisible="True"/>
+                    <field name="account_type" column_invisible="True"/>
+                    <field name="statement_line_id" column_invisible="True"/>
+                    <field name="company_currency_id" column_invisible="True"/>
+                    <field name="is_same_currency" column_invisible="True"/>
+                    <field name="is_account_reconcile" column_invisible="True"/>
+                    <field name="sequence" column_invisible="True"/>
+                    <groupby name="partner_id">
+                        <button name="edit" type="edit" icon="fa-edit" title="Edit"/>
+                    </groupby>
+                </list>
+            </field>
+        </record>
+
+
+    <!-- Inherit the standard account.move.line list view -->
+    <record id="view_inherit_accrued_revenue_journal_items_list" model="ir.ui.view">
+        <field name="name">account.move.line.accrued.revenue.inherit</field>
+        <field name="model">account.move.line</field>
+        <field name="inherit_id" ref="view_accrued_revenue_journal_items_list"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='date']" position="after">
+                <field name="x_studio_system_generated"/>
+            </xpath>
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="x_ce_code" optional="show"/>
+                <field name="x_ce_date" optional="show"/>
+            </xpath>
+            <xpath expr="//field[@name='credit']" position="after">
+                <field optional="show" name="x_studio_remarks"/>
+            </xpath>
+              <xpath expr="//field[@name='partner_id']" position="attributes">
+                <attribute name="string">Client Name</attribute>
+              </xpath>
+        </field>
+    </record>
+
+    <record id="action_saatchi_customized_accrued_revenue_journal_items" model="ir.actions.act_window">
+        <field name="name">Accrued Revenues Journal Items</field>
+        <field name="res_model">account.move.line</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_accrued_revenue_journal_items_list"/>
+        <field name="search_view_id" ref="account.view_account_move_line_filter"/> 
+        <field name="context">{'journal_type':'general', 'search_default_posted':1}</field>
+        <field name="domain">[('display_type', 'not in', ('line_section', 'line_note')), ('parent_state', '!=', 'cancel')]</field>
+    </record>
+
+    <menuitem id="menu_accrued_revenue_journal_items"
+              name="Accrued Revenues Journal Items"
+              action="action_saatchi_customized_accrued_revenue_journal_items"
+              parent="account.menu_finance_entries"
+              sequence="100"/>
+    
+</odoo>

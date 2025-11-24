@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Report Action -->
+    <record id="action_report_saatchi_soa_xlsx" model="ir.actions.report">
+        <field name="name">Statement of Accounts (XLSX)</field>
+        <field name="model">account.move</field>
+        <field name="report_type">xlsx</field>
+        <field name="report_name">saatchi_soa_xlsx</field>
+        <field name="report_file">saatchi_soa_xlsx</field>
+        <field name="binding_model_id" ref="account.model_account_move"/>
+        <field name="binding_type">report</field>
+    </record>
+</odoo>

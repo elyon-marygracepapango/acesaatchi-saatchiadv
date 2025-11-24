@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_saatchi_soa_xlsx_all,access.saatchi.soa.xlsx.all,model_report_saatchi_soa_xlsx,1,1,1,1

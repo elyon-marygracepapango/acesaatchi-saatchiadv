@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+
+        <!-- Optional: Add column for Journal Currency if needed -->
+        <record id="account_reports_general_ledger_column_journal_currency" model="account.report.column">
+            <field name="name">Journal Currency</field>
+            <field name="expression_label">currency_name</field>
+            <field name="report_id" ref="account_reports.general_ledger_report"/>
+            <field name="sequence" eval="50"/>  <!-- Adjust position as needed -->
+            <field name="sortable" eval="True"/>
+            <field name="blank_if_zero" eval="False"/>
+        </record>
+    </data>
+</odoo>

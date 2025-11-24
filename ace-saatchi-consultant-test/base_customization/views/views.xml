@@ -1,0 +1,216 @@
+<odoo>
+  <data>
+
+    <!-- ========================= -->
+    <!-- FORM VIEW -->
+    <!-- ========================= -->
+    <record id="base_customization_client_product_ce_code_form" model="ir.ui.view">
+      <field name="name">Client Product CE Code Form</field>
+      <field name="model">base_customization.client_product_ce_code</field>
+      <field name="arch" type="xml">
+        <form string="Client Product CE Code">
+          <header/>
+          <sheet>
+            <group>
+              <group>
+                <field name="x_partner_id"/>
+              </group>
+            </group>
+
+            <notebook>
+              <page string="Client - Product CE Code" name="lines">
+                <field name="x_client_product_ce_co_line_ids">
+                  <list editable="bottom">
+                    <field name="x_product_id"/>
+                    <field name="x_ce_product_code"/>
+                  </list>
+                </field>
+              </page>
+            </notebook>
+          </sheet>
+          <chatter/>
+        </form>
+      </field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- LIST VIEW -->
+    <!-- ========================= -->
+    <record id="base_customization_client_product_ce_code_list" model="ir.ui.view">
+      <field name="name">Client Product CE Code List</field>
+      <field name="model">base_customization.client_product_ce_code</field>
+      <field name="arch" type="xml">
+        <list string="Client Product CE Codes">
+          <!-- <field name="name"/> -->
+          <field name="x_partner_id"/>
+          <field name="x_client_product_ce_co_line_ids" widget="many2many_tags"/>
+        </list>
+      </field>
+    </record>
+
+
+      
+    <!-- ========================= -->
+    <!-- ACTION -->
+    <!-- ========================= -->
+    <record id="base_customization_client_product_ce_code_action" model="ir.actions.act_window">
+      <field name="name">Client Product CE Codes</field>
+      <field name="res_model">base_customization.client_product_ce_code</field>
+      <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- ========================= -->
+    <!-- MENU ITEM -->
+    <!-- ========================= -->
+
+    
+    <record id="view_order_form_inherit_client_product_ce" model="ir.ui.view">
+      <field name="name">sale.order.form.inherit.client.product.ce</field>
+      <field name="model">sale.order</field>
+      <field name="inherit_id" ref="sale.view_order_form"/>
+      <field name="arch" type="xml">
+
+        <xpath expr="//field[@name='partner_id']" position="after">
+            <field name="x_client_product_ce_code" options="{'no_create': True}" readonly="state in ['cancel', 'sale']" domain="[('x_client_product_ce_co_id.x_partner_id', '=', partner_id)]"/>
+        </xpath>
+        <xpath expr="//field[@name='payment_term_id']" position="after">
+          <field name="x_alt_currency_id" options="{'no_create': True}" readonly="state in ['cancel', 'sale']"/>
+        </xpath>
+
+          <xpath expr="//form[1]/sheet[1]/notebook[1]/page[@name='order_lines']/field[@name='order_line']/list[1]/field[@name='price_unit']" position="after">
+                <field name="currency_id"/>
+                <field name="fx_price_unit" optional="show"/>
+                <field name="fx_currency_id" optional="show" readonly="1"/>
+          </xpath>
+      </field>
+    </record>
+
+    <record id="view_purchase_order_form_inherit_fx" model="ir.ui.view">
+        <field name="name">purchase.order.form.inherit.fx</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//button[@name='action_purchase_history']" position="after">
+                
+                <field name="currency_id" column_invisible="1"/>
+                <field name="fx_price_unit" optional="show"/>
+                <field name="fx_currency_id" optional="show" readonly="1"/>
+            </xpath>
+        </field>
+    </record>
+
+
+
+
+    <record id="view_sale_order_form_inherit_custom" model="ir.ui.view">
+        <field name="name">sale.order.form.inherit.custom</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <!-- Insert new totals below the existing tax_totals -->
+            <xpath expr="//field[@name='tax_totals']" position="after">
+                <div class="o_sale_total o_alt_currency_total mt-2" name="alt_currency_section" invisible="not x_alt_currency_amount">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="fw-bold text-muted">Alt Currency:</span>
+                        <field name="x_alt_currency_id"
+                               options="{'no_open': true}"
+                               class="oe_inline text-end fw-semibold"
+                               readonly="1"
+                               force_save="1"/>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-muted" style="min-width:180px;">Alt Currency Amount:</span>
+                        <field name="x_alt_currency_amount"
+                               widget="monetary"
+                               options="{'currency_field': 'x_alt_currency_id'}"
+                               class="oe_inline text-end fw-semibold"
+                               style="font-size: 1.1em; color: var(--o-brand-odoo);"/>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+          
+    <record id="view_purchase_order_form_inherit_alt_currency" model="ir.ui.view">
+        <field name="name">purchase.order.form.inherit.alt.currency</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+    
+          <xpath expr="//form[1]/sheet[1]/group[1]/group[1]/field[@name='currency_id']" position="after">
+            <field name="x_alt_currency_id"/>
+          </xpath>
+
+            <xpath expr="//field[@name='tax_totals']" position="after">
+                <br/>
+                <div class="o_sale_total o_alt_currency_total mt-2" name="alt_currency_section" invisible="not x_alt_currency_amount">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="fw-bold text-muted">Alt Currency:</span>
+                        <field name="x_alt_currency_id"
+                               options="{'no_open': true}"
+                               class="oe_inline text-end fw-semibold"
+                               readonly="1"
+                               force_save="1"/>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-muted" style="min-width:180px;">Alt Currency Amount:</span>
+                        <field name="x_alt_currency_amount"
+                               widget="monetary"
+                               options="{'currency_field': 'x_alt_currency_id'}"
+                               class="oe_inline text-end fw-semibold"
+                               style="font-size: 1.1em; color: var(--o-brand-odoo);"/>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+
+    <record id="view_move_form_inherit_field" model="ir.ui.view">
+        <field name="name">account.move.form.inherit.field</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+    
+            <xpath expr="//form[1]/sheet[1]/notebook[1]/page[@name='invoice_tab']/field[@name='invoice_line_ids']/list[1]/field[@name='price_unit']" position="after">
+                <field name="currency_id" optional="show"/>
+                <field name="fx_price_unit" optional="hide"/>
+                <field name="fx_currency_id" optional="hide"/>
+            </xpath>
+
+            <xpath expr="//field[@name='tax_totals']" position="after">
+                <div class="o_sale_total o_alt_currency_total mt-2" name="alt_currency_section" invisible="not x_alt_currency_amount">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="fw-bold text-muted">Alt Currency:</span>
+                        <field name="x_alt_currency_id"
+                               options="{'no_open': true}"
+                               class="oe_inline text-end fw-semibold"
+                               readonly="1"
+                               force_save="1"/>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-muted" style="min-width:180px;">Alt Currency Amount:</span>
+                        <field name="x_alt_currency_amount"
+                               widget="monetary"
+                               options="{'currency_field': 'x_alt_currency_id'}"
+                               class="oe_inline text-end fw-semibold"
+                               style="font-size: 1.1em; color: var(--o-brand-odoo);"/>
+                    </div>
+                </div>
+            </xpath>
+
+        </field>
+    </record>
+
+
+    <menuitem
+      id="menu_base_customization_client_product_ce_code"
+      name="Client Product CE Code"
+      parent="stock.menu_product_in_config_stock"
+      action="base_customization_client_product_ce_code_action"
+      sequence="100"
+    />
+
+  </data>
+</odoo>
