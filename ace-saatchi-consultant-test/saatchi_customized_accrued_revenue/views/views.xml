@@ -33,7 +33,7 @@
         <field name="name">saatchi.accrued_revenue.list</field>
         <field name="model">saatchi.accrued_revenue</field>
         <field name="arch" type="xml">
-            <list string="Accrued Revenues" js_class="button_in_list">
+            <list string="Accrued Revenues" js_class="button_in_list" create="false">
                 <header>
                     <button string="Create Entries" name="create_multiple_entries" type="object"/>
                 </header>
@@ -42,8 +42,8 @@
     
                 <field name="display_name" string="Name"/>
                 <field name="x_related_ce_id"/>
-                <field name="ce_partner_id"/>
                 <field name="ce_code"/>
+                <field name="ce_partner_id"/>
                 <field name="date"/>
                 <field name="reversal_date"/>
                 <field name="ce_job_description"/>
@@ -112,6 +112,7 @@
                             <field name="reversal_date" readonly="state not in ['draft']"/>
                             <field name="related_accrued_entry" invisible="not related_accrued_entry"/>
                             <field name="related_reverse_accrued_entry" invisible="not related_reverse_accrued_entry"/>
+                            <field name="remarks" readonly="state not in ['draft']"/>
                         </group>
                     </group>
                     <group>
@@ -149,7 +150,7 @@
       <field name="arch" type="xml">
         
         <xpath expr="//field[@name='partner_id']" position="after">
-         <field name="x_ce_code" readonly="1" />
+         <field name="x_ce_code" readonly="1" invisible="not x_ce_code"/>
          <field name="x_ce_status" readonly="state in ['cancel', 'sale']"/>
          <field name="x_job_description" readonly="state in ['cancel', 'sale']"/>
          <field name="x_job_number" readonly="state in ['cancel', 'sale']"/>
@@ -177,12 +178,12 @@
               action="action_saatchi_customized_accrued_revenue"/>
 
 
-    
+    <!-- Accrued Revenue Journal Items List View  -->
     <record id="view_accrued_revenue_journal_items_list" model="ir.ui.view">
             <field name="name">account.move.line</field>
             <field name="model">account.move.line</field>
             <field name="arch" type="xml">
-                <list name="move_line_tree" string="Journal Items" create="false" edit="true" expand="context.get('expand', False)" multi_edit="1" sample="1" open_form_view="True">
+                <list name="move_line_tree" string="Journal Items" create="false" edit="true" expand="context.get('expand', False)" multi_edit="1" sample="1" open_form_view="True" js_class="unfold_all_list">
                     <field name="move_id" column_invisible="True"/>
                     <field name="invoice_date" string="Invoice Date" optional="hide"/>
                     <field name="date" readonly="1"/>
@@ -195,6 +196,8 @@
                     <field name="ref" optional="hide" readonly="False"/>
                     <field name="product_id" readonly="1" optional="hide"/>
                     <field name="name" optional="show"/>
+                    <field name="x_reference" optional="show"/>
+                    <field name="x_ce_status" optional="show"/>
                     <field name="analytic_distribution" widget="analytic_distribution" groups="analytic.group_analytic_accounting" optional="hide" options="{'product_field': 'product_id', 'account_field': 'account_id', 'force_applicability': 'optional', 'multi_edit': true}"/>
                     <field name="tax_ids" widget="many2many_tags" optional="hide" readonly="1"/>
                     <field name="amount_currency" string="In Currency" groups="base.group_multi_currency" optional="hide" readonly="1" invisible="is_same_currency"/>
@@ -207,7 +210,7 @@
                     <field name="tax_line_id" string="Originator Tax" optional="hide" readonly="1"/>
                     <field name="date_maturity" readonly="1" optional="hide"/>
                     <field name="balance" sum="Total Balance" optional="hide" readonly="1"/>
-                    <field name="matching_number" string="Matching" readonly="1" optional="show" widget="matching_link_widget"/>
+                    <!-- <field name="matching_number" string="Matching" readonly="1" optional="show" widget="matching_link_widget"/> -->
                     <field name="amount_residual" sum="Total Residual" string="Residual" optional="hide" readonly="1" invisible="not is_account_reconcile"/>
                     <field name="amount_residual_currency" sum="Total Residual in Currency" string="Residual in Currency" optional="hide" readonly="1" invisible="is_same_currency or not is_account_reconcile" groups="base.group_multi_currency"/>
                     <field name="move_type" column_invisible="True"/>
@@ -233,7 +236,13 @@
         <field name="inherit_id" ref="view_accrued_revenue_journal_items_list"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='date']" position="after">
-                <field name="x_studio_system_generated"/>
+                <!-- <field name="x_studio_system_generated"/>
+                <field name="x_is_accrued_entry"/>
+                <field name="x_is_reversal"/> -->
+                <field name="x_type_of_entry" widget="badge"
+                       decoration-info="x_type_of_entry in ('accrued_system', 'accrued_manual')"
+                       decoration-success="x_type_of_entry in ('reversal_system', 'reversal_manual')"
+                       decoration-warning="x_type_of_entry in ('adjustment_system', 'adjustment_manual')"/>
             </xpath>
             <xpath expr="//field[@name='partner_id']" position="after">
                 <field name="x_ce_code" optional="show"/>
@@ -248,14 +257,93 @@
         </field>
     </record>
 
+
+
+    <!-- Accrued Revenue Search View  -->
+        <record id="view_account_move_line_accrued_revenue_filter" model="ir.ui.view">
+            <field name="name">account.move.line.search</field>
+            <field name="model">account.move.line</field>
+            <field eval="15" name="priority"/>
+            <field name="arch" type="xml">
+                <search string="Search Journal Items">
+                    <field name="x_ce_code"/>
+                    <field name="name" string="Journal Item" filter_domain="[
+                        '|', '|', '|',
+                        ('name', 'ilike', self), ('ref', 'ilike', self), ('account_id', 'ilike', self), ('partner_id', 'ilike', self)]"/>
+                    <field name="name"/>
+                    <field name="ref"/>
+                    <field name="invoice_date"/>
+                    <field name="date"/>
+                    <field name="date_maturity" string="Due Date"/>
+                    <field name="discount_date" string="Discount Date"/>
+                    <field name="balance" string="Amount" filter_domain="['|', ('credit', '=', raw_value), ('debit', '=', raw_value)]"/>
+                    <field name="account_id"/>
+                    <field name="account_type"/>
+                    <field name="partner_id"/>
+                    <field name="journal_id"/>
+                    <field name="product_id"/>
+                    <field name="product_category_id"/>
+                    <field name="move_id" string="Journal Entry" filter_domain="[
+                        '|', ('move_id.name', 'ilike', self), ('move_id.ref', 'ilike', self)]"/>
+                    <field name="tax_ids" />
+                    <field name="tax_line_id" string="Originator Tax"/>
+                    <field name="reconcile_model_id"/>
+                    <separator/>
+                    <filter string="Accrual Account Only" name="accrual_account" domain="[('account_id.id', '=', 5932)]" help="Default Accrual Account"/>
+                    <separator/>
+                    <filter string="Unposted" name="unposted" domain="[('parent_state', '=', 'draft')]" help="Unposted Journal Items"/>
+                    <filter string="Posted" name="posted" domain="[('parent_state', '=', 'posted')]" help="Posted Journal Items"/>
+                    <separator/>
+
+                    <!-- <filter string="Sales" name="sales" domain="[('journal_id.type', '=', 'sale')]" context="{'default_journal_type': 'sale'}"/>
+                    <filter string="Purchases" name="purchases" domain="[('journal_id.type', '=', 'purchase')]" context="{'default_journal_type': 'purchase'}"/>
+                    <filter string="Bank" name="bank" domain="[('journal_id.type', '=', 'bank')]" context="{'default_journal_type': 'bank'}"/>
+                    <filter string="Cash" name="cash" domain="[('journal_id.type', '=', 'cash')]" context="{'default_journal_type': 'cash'}"/>
+                    <filter string="Miscellaneous" domain="[('journal_id.type', '=', 'general')]" name="misc_filter" context="{'default_journal_type': 'general'}"/>
+                    <separator/> -->
+                    <filter string="Accrued Entry" domain="[('x_type_of_entry', 'ilike', 'Accrued')]" help="From Trade Payable accounts" name="trade_payable"/>
+                    <filter string="Reversal Entry" domain="[('x_type_of_entry', 'ilike', 'Reversal')]" help="From Trade Receivable accounts" name="trade_receivable"/>
+                    <filter string="Adjustment Entry" domain="[('x_type_of_entry', 'ilike', 'Adjustment')]" help="From Trade Receivable accounts" name="trade_receivable"/>
+                    <separator/>
+                    <filter string="System" domain="[('x_type_of_entry', 'ilike', 'System')]" help="From Non Trade Receivable accounts" name="non_trade_payable"/>
+                    <filter string="Manual" domain="[('x_type_of_entry', 'ilike', 'Manual')]" help="From Non Trade Receivable accounts" name="non_trade_receivable"/>
+                        
+                    <!-- <filter string="P&amp;L Accounts" domain="[('account_id.internal_group', 'in', ('income', 'expense'))]" help="From P&amp;L accounts" name="pl_accounts"/> -->
+                    <filter string="No Bank Transaction" domain="[('statement_line_id', '=', False), ('payment_id', '=', False)]" name="no_st_line_id" invisible="1"/>
+                    <separator/>
+                    <filter string="Date" name="date" date="date"/>
+                    <!-- <filter string="Invoice Date" name="invoice_date" date="invoice_date"/> -->
+                    <separator/>
+                    <filter string="Report Dates" name="date_between" domain="[('date', '&gt;=', context.get('date_from')), ('date', '&lt;=', context.get('date_to'))]" invisible="1"/>
+                    <filter string="Report Dates" name="date_before" domain="[('date', '&lt;=', context.get('date_to'))]" invisible="1"/>
+                    <separator/>
+                    <filter string="Analytic Accounts" name="analytic_accounts" domain="[('analytic_distribution', 'in', context.get('analytic_ids'))]" invisible="1"/>
+                    <group expand="0" string="Group By">
+                        <filter string="Journal Entry" name="group_by_move" domain="[]" context="{'group_by': 'move_name'}"/>
+                        <filter string="Account" name="group_by_account" domain="[]" context="{'group_by': 'account_id'}"/>
+                        <filter string="CE Code" name="group_by_x_ce_code" domain="[]" context="{'group_by': 'x_ce_code'}"/>
+                        <filter string="Entry Type" name="group_by_x_type_of_entry" domain="[]" context="{'group_by': 'x_type_of_entry'}"/>
+                        <filter string="Partner" name="group_by_partner" domain="[]" context="{'group_by': 'partner_id'}"/>
+                        <filter string="Journal" name="journal" domain="[]" context="{'group_by': 'journal_id'}"/>
+                        <filter string="Date" name="groupby_date" domain="[]" context="{'group_by': 'date'}"/>
+                        <filter string="Invoice Date" name="groupby_invoice_date" domain="[]" context="{'group_by': 'invoice_date'}"/>
+
+                    </group>
+                    <searchpanel class="account_root w-auto">
+                        <field name="account_root_id" icon="fa-filter" groupby="account_id" limit="0"/>
+                    </searchpanel>
+                </search>
+            </field>
+        </record>
+
     <record id="action_saatchi_customized_accrued_revenue_journal_items" model="ir.actions.act_window">
         <field name="name">Accrued Revenues Journal Items</field>
         <field name="res_model">account.move.line</field>
         <field name="view_mode">list</field>
         <field name="view_id" ref="view_accrued_revenue_journal_items_list"/>
-        <field name="search_view_id" ref="account.view_account_move_line_filter"/> 
+        <field name="search_view_id" ref="view_account_move_line_accrued_revenue_filter"/> 
         <field name="context">{'journal_type':'general', 'search_default_posted':1}</field>
-        <field name="domain">[('display_type', 'not in', ('line_section', 'line_note')), ('parent_state', '!=', 'cancel')]</field>
+        <field name="domain">[('display_type', 'not in', ('line_section', 'line_note')), ('parent_state', '!=', 'cancel'), ('journal_id.name', 'ilike', 'ACCRUAL' )]</field>
     </record>
 
     <menuitem id="menu_accrued_revenue_journal_items"

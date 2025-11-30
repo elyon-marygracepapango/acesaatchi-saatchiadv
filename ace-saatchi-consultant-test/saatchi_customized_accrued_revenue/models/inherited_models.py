@@ -46,94 +46,11 @@ class SaleOrder(models.Model):
         string="Job Number"
     )
 
-    # ========== Financial Tracking Fields ==========
-    x_ce_approved_estimate_billing = fields.Monetary(
-        string="Approved Estimate | Billing",
-        currency_field="currency_id",
-        store=True,
-        compute="_compute_x_ce_amounts",
-        help="Total approved estimate for billing (all lines)"
-    )
-    
-    x_ce_approved_estimate_revenue = fields.Monetary(
-        string="Approved Estimate | Revenue",
-        currency_field="currency_id",
-        store=True,
-        compute="_compute_x_ce_amounts",
-        help="Total approved estimate for revenue (Agency Charges only)"
-    )
-    
-    x_ce_invoiced_billing = fields.Monetary(
-        string="Invoiced | Billing",
-        currency_field="currency_id",
-        store=True,
-        compute="_compute_x_ce_amounts",
-        help="Total invoiced amount for billing (all lines)"
-    )
-    
-    x_ce_invoiced_revenue = fields.Monetary(
-        string="Invoiced | Revenue",
-        currency_field="currency_id",
-        store=True,
-        compute="_compute_x_ce_amounts",
-        help="Total invoiced amount for revenue (Agency Charges only)"
-    )
-    
-    x_ce_variance_billing = fields.Monetary(
-        string="Variance | Billing",
-        currency_field="currency_id",
-        store=True,
-        compute="_compute_x_ce_amounts",
-        help="Difference between approved estimate and invoiced (billing)"
-    )
-    
-    x_ce_variance_revenue = fields.Monetary(
-        string="Variance | Revenue",
-        currency_field="currency_id",
-        store=True,
-        compute="_compute_x_ce_amounts",
-        help="Difference between approved estimate and invoiced (revenue) - eligible for accrual"
-    )
 
     related_accrued_revenue_count = fields.Integer(string="Related Accrued Revenue Count", compute="_compute_related_accrued_revenue_count")
+    related_accrued_revenue_journal_items_count = fields.Integer(string="Related Accrued Revenue Journal Items Count", compute="_compute_related_accrued_revenue_journal_items_count")
+    
 
-    
-    # ========== Compute Methods ==========
-    
-    @api.depends(
-        'order_line.price_subtotal',
-        'order_line.qty_invoiced',
-        'order_line.price_unit',
-    )
-    def _compute_x_ce_amounts(self):
-        """
-        Compute approved estimates, invoiced amounts, and variances
-        
-        Logic:
-        - BILLING: All lines included
-        - REVENUE: Only Agency Charges category lines included
-        - VARIANCE: Approved Estimate - Invoiced
-        """
-        for record in self:
-            approved_estimate_billing = 0
-            approved_estimate_revenue = 0
-            invoiced_billing = 0
-            invoiced_revenue = 0
-            
-            for line in record.order_line:
-                approved_estimate_billing += line.price_subtotal
-                invoiced_billing += line.qty_invoiced * line.price_unit
-                
-                if record._is_agency_charges_category(line.product_template_id):
-                    approved_estimate_revenue += line.price_subtotal
-                    invoiced_revenue += line.qty_invoiced * line.price_unit
-            
-            record.x_ce_approved_estimate_billing = approved_estimate_billing
-            record.x_ce_approved_estimate_revenue = approved_estimate_revenue
-            record.x_ce_invoiced_billing = invoiced_billing
-            record.x_ce_invoiced_revenue = invoiced_revenue
-            record.x_ce_variance_billing = approved_estimate_billing - invoiced_billing
-            record.x_ce_variance_revenue = approved_estimate_revenue - invoiced_revenue
 
     # ========== Accrual Collection Methods ==========
     
@@ -158,7 +75,8 @@ class SaleOrder(models.Model):
 
         eligible_sos = self.search([
             ('state', '=', 'sale'),
-            ('x_ce_status', 'in', ['signed', 'billable'])
+            ('x_ce_status', 'in', ['signed', 'billable']),
+            ('x_ce_code', '!=', False)
         ])
         
         for so in eligible_sos:
@@ -345,10 +263,18 @@ class SaleOrder(models.Model):
                 continue
             
             accrued_amount = accrued_qty * line.price_unit
+            
+            # Determine analytic distribution with fallback logic
             analytic_distribution = line.analytic_distribution or {}
             
+            # Fallback to SO level analytic distribution
             if not analytic_distribution and hasattr(self, 'analytic_distribution') and self.analytic_distribution:
                 analytic_distribution = self.analytic_distribution
+            
+            # Default to analytic account ID 2 if still no distribution found
+            if not analytic_distribution:
+                analytic_distribution = {2: 100}
+                _logger.debug(f"Using default analytic account (ID: 2) for line {line.name}")
             
             income_account = line.product_id.property_account_income_id or \
                            line.product_id.categ_id.property_account_income_categ_id
@@ -361,7 +287,7 @@ class SaleOrder(models.Model):
                 'accrued_revenue_id': accrued_revenue.id,
                 'ce_line_id': line.id,
                 'account_id': income_account.id,
-                'label': f'{self.name} - {line.name}',
+                'label': f'{self.x_ce_code} - {line.name}',
                 'credit': accrued_amount,
                 'debit': 0.0,
                 'currency_id': line.currency_id.id,
@@ -487,12 +413,102 @@ class SaleOrder(models.Model):
             'context': {'default_x_related_ce_id': self.id},
         }
 
+    def action_view_accrued_revenues_journal_items(self):
+        self.ensure_one()
+        list_view_id = self.env.ref('saatchi_customized_accrued_revenue.view_accrued_revenue_journal_items_list').id
+        search_view_id = self.env.ref('saatchi_customized_accrued_revenue.view_account_move_line_accrued_revenue_filter').id
+        return {
+            'name': 'Accrued Revenues Journal Items',
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.move.line',
+            'view_mode': 'list,form',
+            'views': [(list_view_id, 'list')],
+            'search_view_id': search_view_id,  # Add comma here!
+            'domain': [('x_ce_code', '=', self.x_ce_code)],
+            'context': {'journal_type': 'general', 'search_default_posted': 1},
+        }
+
         
     def _compute_related_accrued_revenue_count(self):
         for record in self:
             record.related_accrued_revenue_count = self.env['saatchi.accrued_revenue'].search_count([
                 ('x_related_ce_id', '=', record.id)
             ])
+
+    def _compute_related_accrued_revenue_journal_items_count(self):
+        for record in self:
+            record.related_accrued_revenue_journal_items_count = self.env['account.move.line'].search_count([
+                ('x_ce_code', '=', record.x_ce_code)
+            ])
+            
+class AccountMove(models.Model):
+    """
+    Account Move Extension
+    
+    Adds fields to track accrued revenue-related journal entries.
+    """
+    _inherit = "account.move"
+    
+    x_related_custom_accrued_record = fields.Many2one(
+        'saatchi.accrued_revenue',
+        store=True,
+        readonly=True,
+        string="Related Accrued Revenue",
+        help="Link to the accrued revenue record that generated this move"
+    )
+    
+    x_remarks = fields.Char(
+        string="Remarks",
+        help="Additional remarks for this journal entry"
+    )
+
+    x_accrual_system_generated = fields.Boolean(
+        string="System Generated",
+        help="Indicates if this accrual was generated automatically by the system"
+    )
+    x_is_reversal = fields.Boolean(string="Is Reversal Entry?")
+    
+    x_is_accrued_entry = fields.Boolean(string="Is Accrued Entry?")
+
+    x_type_of_entry = fields.Selection(
+        selection=[
+            ('reversal_system', 'Reversal Entry - System'),
+            ('reversal_manual', 'Reversal Entry - Manual'),
+            ('accrued_system', 'Accrued Entry - System'),
+            ('accrued_manual', 'Accrued Entry - Manual'),
+            ('adjustment_system', 'Adjustment Entry - System'),
+            ('adjustment_manual', 'Adjustment Entry - Manual'),
+        ],
+        string="Entry Type",
+        compute="_compute_entry_type",
+        store=True,
+        readonly=True
+    )
+    
+    @api.depends('x_related_custom_accrued_record', 
+                 'x_related_custom_accrued_record.is_adjustment_entry',
+                 'x_accrual_system_generated',
+                 'ref')
+    def _compute_entry_type(self):
+        """Determine entry type based on accrued revenue record and generation method"""
+        for move in self:
+            if not move.x_related_custom_accrued_record:
+                move.x_type_of_entry = False
+                continue
+            
+            # Determine if system or manual
+            suffix = 'system' if move.x_accrual_system_generated else 'manual'
+            
+            # Determine entry type
+            if move.x_related_custom_accrued_record.is_adjustment_entry:
+                move.x_type_of_entry = f'adjustment_{suffix}'
+            elif move.ref and 'Reversal' in move.ref:
+                move.x_type_of_entry = f'reversal_{suffix}'
+            else:
+                move.x_type_of_entry = f'accrued_{suffix}'
+
+
+
 
 class AccountMoveLine(models.Model):
     """
@@ -519,31 +535,49 @@ class AccountMoveLine(models.Model):
         help="Additional remarks for this journal entry line"
     )
 
+    x_reference = fields.Char(
+        string="Reference",
+        related='move_id.ref'
+    )
+    
+    x_is_reversal = fields.Boolean(
+        string="Is Reversal Entry?",
+        related='move_id.x_is_reversal')
+    
+    x_is_accrued_entry = fields.Boolean(
+        string="Is Accrued Entry?",
+        related='move_id.x_is_accrued_entry')
+    
+    x_is_adjustment_entry = fields.Boolean(
+        string="Is Adjustment Entry?",
+        related='move_id.x_is_accrued_entry')
 
-class AccountMove(models.Model):
-    """
-    Account Move Extension
-    
-    Adds fields to track accrued revenue-related journal entries.
-    """
-    _inherit = "account.move"
-    
-    x_related_custom_accrued_record = fields.Many2one(
-        'saatchi.accrued_revenue',
+
+    x_type_of_entry = fields.Selection(
+        selection=[
+            ('reversal_system', 'Reversal Entry - System'),
+            ('reversal_manual', 'Reversal Entry - Manual'),
+            ('accrued_system', 'Accrued Entry - System'),
+            ('accrued_manual', 'Accrued Entry - Manual'),
+            ('adjustment_system', 'Adjustment Entry - System'),
+            ('adjustment_manual', 'Adjustment Entry - Manual'),
+        ],
+        string="Entry Type",
+        related='move_id.x_type_of_entry',
         store=True,
-        readonly=True,
-        string="Related Accrued Revenue",
-        help="Link to the accrued revenue record that generated this move"
+        readonly=True
     )
     
-    x_remarks = fields.Char(
-        string="Remarks",
-        help="Additional remarks for this journal entry"
-    )
-
-    x_accrual_system_generated = fields.Boolean(
-        string="System Generated",
-        help="Indicates if this accrual was generated automatically by the system"
+    x_ce_status = fields.Selection(
+        [
+            ('for_client_signature', 'For Client Signature'),
+            ('signed', 'Signed'),
+            ('billable', 'Billable'),
+            ('closed', 'Closed'),
+            ('cancelled', 'Cancelled')
+        ],
+        string='C.E. Status',
+        related='move_id.x_related_custom_accrued_record.ce_status'
     )
 
 
@@ -633,3 +667,32 @@ class GeneralLedgerCustomHandler(models.AbstractModel):
             full_query = SQL('%s LIMIT %s ', full_query, limit)
 
         return full_query
+
+
+
+class ResConfigSettings(models.TransientModel):
+    _inherit = 'res.config.settings'
+    
+    accrued_revenue_account_id = fields.Many2one(
+        'account.account',
+        string='Accrued Revenue Account',
+        config_parameter='account.accrued_revenue_account_id',
+        domain=[('deprecated', '=', False)],
+        help='Default account for accrued revenues'
+    )
+    
+    accrued_journal_id = fields.Many2one(
+        'account.journal',
+        string='Accrued Revenue Journal',
+        config_parameter='account.accrued_journal_id',
+        domain=[('type', '=', 'general')],
+        help='Default journal for accrued revenue entries'
+    )
+    
+    accrued_default_adjustment_account_id = fields.Many2one(
+        'account.account',
+        string='Default Accrual Adjustment Account',
+        config_parameter='account.accrued_default_adjustment_account_id',
+        domain=[('deprecated', '=', False)],
+        help='Default account for accrual adjustments, Account used for adjustment entries (Dr. side)'
+    )

@@ -70,7 +70,7 @@ class SaatchiAccruedRevenueWizard(models.TransientModel):
     accrual_scenario = fields.Selection(
         [
             ('scenario_1', 'Scenario 1: Manual Accrue (Override Validation)'),
-            ('scenario_2', 'Scenario 2: Cancel & Replace Existing (Accrued State Only)'),
+            ('scenario_2', 'Scenario 2: Cancel & Replace Existing Accrue (Accrued/Reversed State Only)'),
             ('scenario_3', 'Scenario 3: Create Adjustment Entry (NO Auto-Reversal)')
         ],
         string="Accrual Scenario",
@@ -81,6 +81,15 @@ class SaatchiAccruedRevenueWizard(models.TransientModel):
         Scenario 3: Creates adjustment entries (Dr. Digital Income | Cr. Accrued Revenue) - PERMANENT entry with NO auto-reversal
         """
     )
+
+
+    # ========== Onchange Methods ==========
+
+    @api.onchange('accrual_date')
+    def onchange_reversal_date(self):
+        for record in self:
+            if record.accrual_date:
+                record.reversal_date = record.accrual_date + relativedelta(months=1, day=1)
 
     # ========== Compute Methods ==========
     
@@ -150,8 +159,8 @@ class SaatchiAccruedRevenueWizard(models.TransientModel):
                 'An unexpected error occurred during accrual creation:\n%s\n\n'
                 'Please check the logs for more details.'
             ) % str(e))
-
-            
+    
+                
     def _validate_scenario_compatibility(self, selected_lines):
         """
         Validate that selected SOs are compatible with chosen scenario
@@ -163,6 +172,26 @@ class SaatchiAccruedRevenueWizard(models.TransientModel):
             list: Error messages (empty if valid)
         """
         errors = []
+        
+        # ========== UNIVERSAL VALIDATION: CE Code Required ==========
+        sos_without_ce_code = []
+        for line in selected_lines:
+            if not line.sale_order_id.x_ce_code:
+                sos_without_ce_code.append(line.sale_order_id.name)
+        
+        if sos_without_ce_code:
+            so_list = '\n'.join(f'  • {so}' for so in sos_without_ce_code)
+            errors.append(_(
+                'CE Code Missing\n\n'
+                'The following Sale Orders do not have a CE Code:\n\n'
+                '%s\n\n'
+                'Please make sure all SO have CE Code before proceeding.'
+            ) % so_list)
+            # Return early - no point checking other validations if CE codes are missing
+            return errors
+        
+        # ========== SCENARIO-SPECIFIC VALIDATIONS ==========
+        
         if self.accrual_scenario == 'scenario_1':
             # Filter lines where ANY existing accrual is draft or accrued
             with_existing = selected_lines.filtered(
@@ -344,7 +373,7 @@ class SaatchiAccruedRevenueWizard(models.TransientModel):
                 f'\n❌ Failed to create {len(failed_sos)} Accrual(s)'
             )
         
-        summary = '\n'.join(message_parts) if created_count > 0 else 'No accruals were created. Please check the criteria.'
+        summary = '\n'.join(message_parts) if created_count > 0 else 'No accruals were created. Please check the criteria. or Check the default accounts and journals in the configuration settings if set properly.'
         
         return self._show_success_and_open_records(
             created_accrual_ids,
@@ -625,7 +654,9 @@ class SaatchiAccruedRevenueWizardLine(models.TransientModel):
         string="Has Existing Accrual",
         default=False,
         readonly=True,
-        help="This sale order already has an accrual for this period"
+        help="This sale order already has an accrual for this period",
+        compute="_compute_existing_accrual_total",
+        store=True
     )
     
     existing_accrual_ids = fields.Many2many(
@@ -644,9 +675,11 @@ class SaatchiAccruedRevenueWizardLine(models.TransientModel):
     )
     
     create_accrual = fields.Boolean(
-        string="Create",
+        string="Select",
         default=False,
-        help="Check to create accrual for this sale order"
+        help="Check to create accrual for this sale order",
+        store=True,
+        compute="_compute_create_accrual"
     )
 
     # ========== Compute Methods ==========
@@ -666,10 +699,27 @@ class SaatchiAccruedRevenueWizardLine(models.TransientModel):
             else:
                 line.existing_accrual_ids = [(5, 0, 0)]
     
-    @api.depends('existing_accrual_ids', 'existing_accrual_ids.total_debit_in_accrue_account')
+    @api.depends('existing_accrual_ids', 'existing_accrual_ids.total_debit_in_accrue_account' )
     def _compute_existing_accrual_total(self):
         """Calculate total from existing accruals"""
         for line in self:
             line.existing_accrual_total = sum(
                 line.existing_accrual_ids.mapped('total_debit_in_accrue_account')
             )
+
+            if line.existing_accrual_total:
+                # line.create_accrual = False
+                line.has_existing_accrual = True
+            else:
+                # line.create_accrual = True
+                line.has_existing_accrual = False
+
+    @api.depends('wizard_id.accrual_date')
+    def _compute_create_accrual(self):
+        for record in self:
+            if record.existing_accrual_ids:
+                record.create_accrual = False
+            else:
+                record.create_accrual = True
+        
+                

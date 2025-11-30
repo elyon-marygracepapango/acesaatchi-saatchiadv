@@ -75,8 +75,32 @@
         </xpath>
         <xpath expr="//field[@name='payment_term_id']" position="after">
           <field name="x_alt_currency_id" options="{'no_create': True}" readonly="state in ['cancel', 'sale']"/>
+          <field name="x_remarks"/>
         </xpath>
 
+        
+        <xpath expr="//form[1]/sheet[1]/notebook[1]" position="inside">
+          <page string="Unbilled Estimate Report" name="studio_page_r5_1jb1eu01c" invisible="not x_ce_code">
+            <group name="studio_group_r5">
+              <group name="studio_group_r5_left">
+                <field name="currency_id" invisible="1"/>
+                <separator string="Approved Estimate"/>
+                <field name="x_ce_approved_estimate_billing"/>
+                <field name="x_ce_approved_estimate_revenue"/>
+                <separator string="Invoiced"/>
+                <field name="x_ce_invoiced_billing"/>
+                <field name="x_ce_invoiced_revenue"/>
+                <separator string="Variance"/>
+                <field name="x_ce_variance_billing"/>
+                <field name="x_ce_variance_revenue"/>
+                <xpath expr="//field[@name='x_ce_invoiced_billing']" position="move"/>
+              </group>
+              <group name="studio_group_r5_right"/>
+            </group>
+          </page>
+        </xpath>
+
+          
           <xpath expr="//form[1]/sheet[1]/notebook[1]/page[@name='order_lines']/field[@name='order_line']/list[1]/field[@name='price_unit']" position="after">
                 <field name="currency_id"/>
                 <field name="fx_price_unit" optional="show"/>

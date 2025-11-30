@@ -32,6 +32,7 @@ class InheritSaleOrder(models.Model):
         default=lambda self: self._default_alt_currency_id(),
     )
 
+    x_remarks = fields.Char(string="Remarks")
 
     def write(self, vals):
         res = super().write(vals)
@@ -55,6 +56,57 @@ class InheritSaleOrder(models.Model):
                     record.company_id or record.env.company,
                     record.date_order
                 )
+
+
+    # ========== Financial Tracking Fields ==========
+    x_ce_approved_estimate_billing = fields.Monetary(
+        string="Approved Estimate | Billing",
+        currency_field="currency_id",
+        store=True,
+        compute="_compute_x_ce_amounts",
+        help="Total approved estimate for billing (all lines)"
+    )
+    
+    x_ce_approved_estimate_revenue = fields.Monetary(
+        string="Approved Estimate | Revenue",
+        currency_field="currency_id",
+        store=True,
+        compute="_compute_x_ce_amounts",
+        help="Total approved estimate for revenue (Agency Charges only)"
+    )
+    
+    x_ce_invoiced_billing = fields.Monetary(
+        string="Invoiced | Billing",
+        currency_field="currency_id",
+        store=True,
+        compute="_compute_x_ce_amounts",
+        help="Total invoiced amount for billing (all lines)"
+    )
+    
+    x_ce_invoiced_revenue = fields.Monetary(
+        string="Invoiced | Revenue",
+        currency_field="currency_id",
+        store=True,
+        compute="_compute_x_ce_amounts",
+        help="Total invoiced amount for revenue (Agency Charges only)"
+    )
+    
+    x_ce_variance_billing = fields.Monetary(
+        string="Variance | Billing",
+        currency_field="currency_id",
+        store=True,
+        compute="_compute_x_ce_amounts",
+        help="Difference between approved estimate and invoiced (billing)"
+    )
+    
+    x_ce_variance_revenue = fields.Monetary(
+        string="Variance | Revenue",
+        currency_field="currency_id",
+        store=True,
+        compute="_compute_x_ce_amounts",
+        help="Difference between approved estimate and invoiced (revenue) - eligible for accrual"
+    )
+
                 
     def _default_alt_currency_id(self):
         """Logic:
@@ -133,6 +185,46 @@ class InheritSaleOrder(models.Model):
             self.x_client_product_ce_code = [(5, 0, 0)] + line_vals  # Clear and add new
         else:
             self.x_client_product_ce_code = [(5, 0, 0)]  # Clear all
+
+
+
+
+    # ========== Compute Methods ==========
+    
+    @api.depends(
+        'order_line.price_subtotal',
+        'order_line.qty_invoiced',
+        'order_line.price_unit',
+    )
+    def _compute_x_ce_amounts(self):
+        """
+        Compute approved estimates, invoiced amounts, and variances
+        
+        Logic:
+        - BILLING: All lines included
+        - REVENUE: Only Agency Charges category lines included
+        - VARIANCE: Approved Estimate - Invoiced
+        """
+        for record in self:
+            approved_estimate_billing = 0
+            approved_estimate_revenue = 0
+            invoiced_billing = 0
+            invoiced_revenue = 0
+            
+            for line in record.order_line:
+                approved_estimate_billing += line.price_subtotal
+                invoiced_billing += line.qty_invoiced * line.price_unit
+                
+                if record._is_agency_charges_category(line.product_template_id):
+                    approved_estimate_revenue += line.price_subtotal
+                    invoiced_revenue += line.qty_invoiced * line.price_unit
+            
+            record.x_ce_approved_estimate_billing = approved_estimate_billing
+            record.x_ce_approved_estimate_revenue = approved_estimate_revenue
+            record.x_ce_invoiced_billing = invoiced_billing
+            record.x_ce_invoiced_revenue = invoiced_revenue
+            record.x_ce_variance_billing = approved_estimate_billing - invoiced_billing
+            record.x_ce_variance_revenue = approved_estimate_revenue - invoiced_revenue
 
 class InheritSaleOrderLine(models.Model):
     _inherit = 'sale.order.line'

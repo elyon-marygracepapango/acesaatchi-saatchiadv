@@ -22,7 +22,7 @@
                     <!-- Title -->
                     <div class="oe_title">
                         <h1>
-                            <span invisible="special_case_mode">Generate Accrued Revenue</span>
+                            <span invisible="special_case_mode">Generate System Accrued Revenue</span>
                             <span invisible="not special_case_mode">Manual Accrual Creation</span>
                         </h1>
                         <p class="text-muted" invisible="special_case_mode">
@@ -76,13 +76,13 @@
                          role="alert"
                          invisible="not special_case_mode">
                         <strong invisible="accrual_scenario != 'scenario_1'">Scenario 1:</strong>
-                        <span invisible="accrual_scenario != 'scenario_1'">Accruals will be created regardless of SO status</span>
+                        <span invisible="accrual_scenario != 'scenario_1'"> Accruals will be created regardless of SO status</span>
                         
                         <strong invisible="accrual_scenario != 'scenario_2'">Scenario 2:</strong>
-                        <span invisible="accrual_scenario != 'scenario_2'">Posted accruals will be cancelled and replaced with new entries</span>
+                        <span invisible="accrual_scenario != 'scenario_2'"> Posted accruals will be cancelled and replaced with new entries</span>
                         
                         <strong invisible="accrual_scenario != 'scenario_3'">Scenario 3:</strong>
-                        <span invisible="accrual_scenario != 'scenario_3'">Permanent adjustment entries will be created (no reversal). Edit amounts in draft before posting.</span>
+                        <span invisible="accrual_scenario != 'scenario_3'"> Permanent adjustment entries will be created (no reversal). Edit amounts in draft before posting.</span>
                     </div>
                     <!-- Warning Banner for Scenario 2 -->
                     <div class="alert alert-danger" 
@@ -99,7 +99,12 @@
                         <i class="fa fa-exclamation-triangle"/> 
                         <strong>Warning:</strong> Scenario 3 creates permanent entries with no automatic reversal. Review amounts before posting.
                     </div>
-                    
+                    <!-- Info Banner - Default Mode -->
+                    <div class="alert alert-info mt-3" 
+                         role="alert"
+                         invisible="special_case_mode">
+                        <strong>Instructions:</strong> Toggle "Create" to select sale orders. Yellow rows have existing accruals.
+                    </div>
                     <!-- Summary Banner -->
                     <div class="alert alert-warning mt-3" role="alert" invisible="not has_existing_accruals">
                         <i class="fa fa-exclamation-triangle"/> 
@@ -107,7 +112,7 @@
                         <span invisible="special_case_mode">Creating new entries will create duplicates.</span>
                         <span invisible="not special_case_mode">Your scenario will handle these automatically.</span>
                     </div>
-                    
+                                        
                     <notebook>
                         <!-- ========== Page 1: Sale Orders Selection ========== -->
                         <page string="Sale Orders" name="sale_orders">
@@ -118,64 +123,60 @@
                                       delete="0" 
                                       decoration-warning="has_existing_accrual == True">
                                     
-                                    <!-- Selection Toggle -->
+                                    <!-- Selection Toggle - First Column -->
                                     <field name="create_accrual" 
                                            widget="boolean_toggle"
-                                           string="Create"/>
+                                           string="Select" force_save="1" readonly="0"/>
                                     
-                                    <!-- Sale Order Details -->
+                                    <!-- Sale Order Reference -->
                                     <field name="sale_order_id" 
                                            readonly="1"
                                            string="Sale Order"/>
-                                    
+
+                                    <!-- CE Reference and Status -->
+                                    <field name="ce_code" 
+                                           readonly="1"
+                                           string="CE Code"/>
+
+                            
+                                    <!-- Customer Information -->
                                     <field name="partner_id" 
                                            readonly="1"
                                            string="Customer"/>
                                     
-                                    <field name="ce_code" 
-                                           readonly="1"
-                                           string="CE Code"/>
                                     
                                     <field name="ce_status" 
                                            readonly="1"
-                                           optional="show"
                                            string="Status"
                                            widget="badge"
                                            decoration-success="ce_status in ['signed', 'billable']"
                                            decoration-info="ce_status == 'for_client_signature'"
                                            decoration-muted="ce_status in ['closed', 'cancelled']"/>
                                     
-                                    <!-- Financial Information -->
-                                    <field name="amount_total" 
-                                           readonly="1" 
-                                           sum="Total"
-                                           string="Accrual Amount"/>
-                                    
+                                    <!-- Financial Amounts - Right Side -->
                                     <field name="existing_accrual_total"
                                            readonly="1"
-                                           optional="show"
-                                           string="Existing"/>
+                                           string="Already Accrued"
+                                           optional="show"/>
                                     
-                                    <field name="currency_id" 
+                                    <field name="amount_total" 
                                            readonly="1" 
-                                           column_invisible="1"/>
+                                           sum="Total Amount"
+                                           string="Amount to Accrue"/>
                                     
-                                    <!-- Duplicate Indicator -->
+                                    <!-- Duplicate Warning Indicator -->
                                     <field name="has_existing_accrual" 
                                            readonly="1" 
                                            widget="boolean_toggle"
-                                           string="Has Existing"/>
+                                           string="Has Existing"
+                                           optional="show"/>
+                                    
+                                    <!-- Hidden Fields -->
+                                    <field name="currency_id" 
+                                           readonly="1" 
+                                           column_invisible="1"/>
                                 </list>
                             </field>
-                            
-                            <!-- Info Banner - Default Mode -->
-                            <div class="alert alert-info mt-3" 
-                                 role="alert"
-                                 invisible="special_case_mode">
-                                <strong>Instructions:</strong> Toggle "Create" to select sale orders. Yellow rows have existing accruals.
-                            </div>
-                            
-
                         </page>
                         
                         <!-- ========== Page 2: Existing Accruals Review ========== -->
@@ -191,34 +192,39 @@
                                       edit="0" 
                                       decoration-muted="not existing_accrual_ids">
                                     
+                                    <!-- Reference Information -->
                                     <field name="sale_order_id" 
                                            string="Sale Order"/>
-                                    
-                                    <field name="partner_id" 
-                                           string="Customer"/>
                                     
                                     <field name="ce_code" 
                                            string="CE Code"/>
                                     
                                     <field name="ce_status"
+                                           string="CE Status"
                                            widget="badge"
                                            decoration-success="ce_status in ['signed', 'billable']"
                                            decoration-info="ce_status == 'for_client_signature'"
                                            decoration-muted="ce_status in ['closed', 'cancelled']"/>
                                     
+                                    <!-- Customer -->
+                                    <field name="partner_id" 
+                                           string="Customer"/>
+                                    
+                                    <!-- Financial Summary -->
                                     <field name="amount_total" 
                                            string="SO Amount"/>
                                     
                                     <field name="existing_accrual_total"
-                                           string="Existing Total"/>
+                                           string="Total Accrued"/>
                                     
-                                    <field name="currency_id" 
-                                           column_invisible="1"/>
-                                    
-                                    <!-- Clickable Tags for Existing Accruals -->
+                                    <!-- Existing Accruals Tags -->
                                     <field name="existing_accrual_ids" 
                                            widget="many2many_tags" 
-                                           string="Existing Accruals"/>
+                                           string="Accrual Records"/>
+                                    
+                                    <!-- Hidden Fields -->
+                                    <field name="currency_id" 
+                                           column_invisible="1"/>
                                 </list>
                                 
                                 <!-- Form View (when clicking on a line) -->
@@ -238,27 +244,32 @@
                                         
                                         <!-- Summary Information -->
                                         <group>
-                                            <group>
+                                            <group string="Contract Information">
                                                 <field name="ce_code" readonly="1"/>
                                                 <field name="ce_status" readonly="1" widget="badge"/>
-                                                <field name="amount_total" readonly="1"/>
+                                            </group>
+                                            <group string="Financial Summary">
+                                                <field name="amount_total" readonly="1" string="SO Total"/>
+                                                <field name="existing_accrual_total" readonly="1" string="Total Accrued"/>
                                                 <field name="currency_id" readonly="1"/>
                                             </group>
-                                            <group>
-                                                <field name="existing_accrual_total" readonly="1"/>
+                                        </group>
+                                        
+                                        <group>
+                                            <group string="Status">
                                                 <field name="has_existing_accrual" 
                                                        readonly="1" 
-                                                       widget="boolean"/>
+                                                       widget="boolean"
+                                                       string="Has Existing Accruals"/>
                                                 <field name="create_accrual" 
-                                                       readonly="1" 
-                                                       widget="boolean"/>
+                                                       widget="boolean"
+                                                       string="Selected for New Accrual"/>
                                             </group>
                                         </group>
                                         
                                         <!-- Existing Accruals Details -->
                                         <notebook>
-                                            <page string="Existing Accruals" 
-                                                  name="accruals">
+                                            <page string="Accrual History" name="accruals">
                                                 
                                                 <field name="existing_accrual_ids" 
                                                        nolabel="1" 
@@ -268,41 +279,47 @@
                                                           delete="0" 
                                                           edit="0">
                                                         
+                                                        <!-- Accrual Reference -->
                                                         <field name="display_name" 
-                                                               string="Accrual"/>
+                                                               string="Accrual Reference"/>
                                                         
-                                                        <field name="date" 
-                                                               string="Accrual Date"/>
-                                                        
-                                                        <field name="reversal_date" 
-                                                               string="Reversal Date"/>
-                                                        
-                                                        <!-- Status Badge with Colors -->
+                                                        <!-- Status -->
                                                         <field name="state" 
+                                                               string="Status"
                                                                widget="badge" 
                                                                decoration-info="state == 'draft'"
                                                                decoration-success="state == 'accrued'"
                                                                decoration-warning="state == 'reversed'"
                                                                decoration-danger="state == 'cancel'"/>
                                                         
-                                                        <field name="is_adjustment_entry"
-                                                               string="Is Adjustment"
-                                                               widget="boolean"
-                                                               optional="show"/>
+                                                        <!-- Dates -->
+                                                        <field name="date" 
+                                                               string="Accrual Date"/>
                                                         
+                                                        <field name="reversal_date" 
+                                                               string="Reversal Date"/>
+                                                        
+                                                        <!-- Financial Amount -->
                                                         <field name="total_debit_in_accrue_account" 
                                                                string="Accrued Amount"/>
                                                         
+                                                        <field name="ce_original_total_amount" 
+                                                               string="CE Total" 
+                                                               optional="hide"/>
+                                                        
+                                                        <!-- Additional Info -->
+                                                        <field name="journal_id" 
+                                                               string="Journal"
+                                                               optional="show"/>
+                                                        
+                                                        <field name="is_adjustment_entry"
+                                                               string="Adjustment"
+                                                               widget="boolean"
+                                                               optional="show"/>
+                                                        
+                                                        <!-- Hidden Fields -->
                                                         <field name="currency_id" 
                                                                column_invisible="1"/>
-                                                        
-                                                        <!-- Optional Fields -->
-                                                        <field name="ce_original_total_amount" 
-                                                               string="CE Max Amount" 
-                                                               optional="hide"/>
-                                                        
-                                                        <field name="journal_id" 
-                                                               optional="hide"/>
                                                     </list>
                                                 </field>
                                                 
@@ -310,14 +327,14 @@
                                                 <div class="alert alert-info mt-3" 
                                                      role="alert" 
                                                      invisible="not existing_accrual_ids">
-                                                    Click any row to view full accrual details and journal entries.
+                                                    <strong>Tip:</strong> Click any row to view full accrual details and journal entries.
                                                 </div>
                                                 
                                                 <!-- Help Text - No Accruals -->
                                                 <div class="alert alert-warning mt-3" 
                                                      role="alert" 
                                                      invisible="existing_accrual_ids">
-                                                    No existing accruals found for this period.
+                                                    <strong>No History:</strong> No existing accruals found for this sale order in the selected period.
                                                 </div>
                                             </page>
                                         </notebook>

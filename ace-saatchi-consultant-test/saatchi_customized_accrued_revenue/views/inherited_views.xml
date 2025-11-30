@@ -5,7 +5,7 @@
             <field name="model">account.move</field>
             <field name="inherit_id" ref="account.view_move_form"/>
             <field name="arch" type="xml">
-                <xpath expr="//form[1]/sheet[1]/notebook[1]/page[@name='other_info']/group[1]/group[@name='misc_group']/field[@name='checked']" position="after">
+                <xpath expr="//field[@name='reversed_entry_id']" position="after">
                     <field name="x_related_custom_accrued_record" invisible="not x_related_custom_accrued_record"/>
                 </xpath>
             </field>
@@ -42,9 +42,6 @@
                            sum="VR"/>
                 
                 </xpath>
-
-
-    
             </field>
         </record>
 
@@ -63,9 +60,41 @@
                         <span class="o_stat_text">Accrual Record</span>
                     </div>
                 </button>
+                <button class="oe_stat_button" name="action_view_accrued_revenues_journal_items" type="object" icon="fa-bars" groups="account.group_account_manager" invisible="related_accrued_revenue_journal_items_count == 0">
+                    <div class="o_field_widget o_stat_info">
+                        <span class="o_stat_value"><field name="related_accrued_revenue_journal_items_count"/></span>
+                        <span class="o_stat_text">Journal Line Items</span>
+                    </div>
+                </button>
             </xpath>
         </field>
     </record>
-
+     
+    <record id="res_config_settings_view_form_inherit_accrued_revenue" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.accrued.revenue</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="account.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//setting[@id='post_bank_transactions_and_payments_setting']" position="after">
+                <setting id="default_accrued_revenue_settings" string="Accrued Revenue Settings:">
+                    <div class="content-group">
+                        <div class="row mt8">
+                            <label for="accrued_revenue_account_id" class="col-lg-4 o_light_label" string="Accrual Account"/>
+                            <field name="accrued_revenue_account_id" options="{'no_open': True, 'no_create': True}"/>
+                        </div>
+                        <div class="row mt8">
+                            <label for="accrued_journal_id" class="col-lg-4 o_light_label" string="Accrual Journal"/>
+                            <field name="accrued_journal_id" options="{'no_open': True, 'no_create': True}"/>
+                        </div>
+                        <div class="row mt8">
+                            <label for="accrued_default_adjustment_account_id" class="col-lg-4 o_light_label" string="Adjustment Account"/>
+                            <field name="accrued_default_adjustment_account_id" options="{'no_open': True, 'no_create': True}"/>
+                        </div>
+                    </div>
+                </setting>
+            </xpath>
+        </field>
+    </record>
+   
     </data>
 </odoo>

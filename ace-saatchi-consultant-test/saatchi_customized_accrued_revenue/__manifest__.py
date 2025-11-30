@@ -36,7 +36,9 @@ Long description of module's purpose
     'assets': {
         'web.assets_backend': [
             'saatchi_customized_accrued_revenue/static/src/js/sync_js_button.js',
+            'saatchi_customized_accrued_revenue/static/src/js/unfold_js_button.js',
             'saatchi_customized_accrued_revenue/static/src/xml/sync_js_button.xml',
+            'saatchi_customized_accrued_revenue/static/src/xml/unfold_all_list.xml',
         ]
     }
 }

@@ -10,4 +10,25 @@
         <field name="binding_model_id" ref="account.model_account_move"/>
         <field name="binding_type">report</field>
     </record>
+
+
+    <record id="action_report_accrued_revenue_xlsx" model="ir.actions.report">
+        <field name="name">Accrued Revenue Report (XLSX)</field>
+        <field name="model">account.move.line</field>
+        <field name="report_type">xlsx</field>
+        <field name="report_name">accrued_revenue_xlsx</field>
+        <field name="report_file">accrued_revenue_xlsx</field>
+        <field name="binding_model_id" ref="account.model_account_move_line"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <record id="action_report_unbilled_estimate_xlsx" model="ir.actions.report">
+        <field name="name">Unbilled Estimate Report (XLSX)</field>
+        <field name="model">sale.order</field>
+        <field name="report_type">xlsx</field>
+        <field name="report_name">unbilled_estimate_xlsx</field>
+        <field name="report_file">unbilled_estimate_xlsx</field>
+        <field name="binding_model_id" ref="sale.model_sale_order"/>
+        <field name="binding_type">report</field>
+    </record>
 </odoo>

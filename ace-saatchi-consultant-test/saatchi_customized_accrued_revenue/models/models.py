@@ -110,14 +110,14 @@ class SaatchiCustomizedAccruedRevenue(models.Model):
     journal_id = fields.Many2one(
         'account.journal',
         string="Journal",
-        default=lambda self: self.env['account.journal'].browse(34),
+        default=lambda self: self._get_accrued_journal_id(),
         required=True
     )
 
     accrual_account_id = fields.Many2one(
         'account.account',
         string="Accrual Account",
-        default=lambda self: self.env['account.account'].search([('code', '=', '1210')], limit=1),
+        default=lambda self: self._get_accrued_revenue_account_id(),
         required=True,
         help="Account 1210 - Accrued Revenue. Debited for normal accruals, credited for adjustments"
     )
@@ -125,7 +125,7 @@ class SaatchiCustomizedAccruedRevenue(models.Model):
     digital_income_account_id = fields.Many2one(
         'account.account',
         string="Digital Income Account",
-        default=lambda self: self.env['account.account'].browse(5787),
+        default=lambda self: self._get_adjustment_accrued_revenue_account_id(),
         help="Account used for adjustment entries (Dr. side)"
     )
 
@@ -182,7 +182,7 @@ class SaatchiCustomizedAccruedRevenue(models.Model):
     )
     
     x_accrual_system_generated = fields.Boolean(
-        string="System Generated",
+        string="Is System Generated?",
         default=True,
         help="Indicates if this accrual was generated automatically by the system"
     )
@@ -313,6 +313,85 @@ class SaatchiCustomizedAccruedRevenue(models.Model):
         today = fields.Date.context_today(self)
         return today.replace(day=1)
 
+    
+    def _get_accrued_revenue_account_id(self):
+        """Get accrued revenue account ID with fallback"""
+        try:
+            account_id = int(self.env['ir.config_parameter'].sudo().get_param(
+                'account.accrued_revenue_account_id',
+                default='0'
+            ) or 0)
+            
+            if account_id:
+                account = self.env['account.account'].sudo().browse(account_id)
+                if account.exists() and not account.deprecated:
+                    return account_id
+            
+            # Fallback: Find miscellaneous income account
+            misc_account = self.env['account.account'].sudo().search([
+                ('account_type', '=', 'income_other'),
+                ('deprecated', '=', False),
+                ('company_id', '=', self.env.company.id)
+            ], limit=1)
+            
+            return misc_account.id if misc_account else 0
+            
+        except (ValueError, TypeError):
+            return 0
+    
+    def _get_accrued_journal_id(self):
+        """Get accrued journal ID with fallback to miscellaneous journal"""
+        try:
+            journal_id = int(self.env['ir.config_parameter'].sudo().get_param(
+                'account.accrued_journal_id',
+                default='0'
+            ) or 0)
+            
+            if journal_id:
+                journal = self.env['account.journal'].sudo().browse(journal_id)
+                if journal.exists():
+                    return journal_id
+            
+            # Fallback: Find first general journal or miscellaneous journal
+            misc_journal = self.env['account.journal'].sudo().search([
+                ('type', '=', 'general'),
+                ('company_id', '=', self.env.company.id)
+            ], limit=1)
+            
+            return misc_journal.id if misc_journal else 0
+            
+        except (ValueError, TypeError):
+            return 0
+        
+    def _get_adjustment_accrued_revenue_account_id(self):
+        """Get adjustment accrued revenue account ID with fallback to default receivable account"""
+        try:
+            account_id = int(self.env['ir.config_parameter'].sudo().get_param(
+                'account.accrued_default_adjustment_account_id',
+                default='0'
+            ) or 0)
+            
+            if account_id:
+                account = self.env['account.account'].sudo().browse(account_id)
+                if account.exists() and not account.deprecated:
+                    return account_id
+            
+            # Fallback: Use company's default receivable account
+            receivable_account = self.env.company.account_default_pos_receivable_account_id
+            
+            if not receivable_account:
+                # Alternative: Search for receivable account
+                receivable_account = self.env['account.account'].sudo().search([
+                    ('account_type', '=', 'asset_receivable'),
+                    ('deprecated', '=', False),
+                    ('company_id', '=', self.env.company.id)
+                ], limit=1)
+            
+            return receivable_account.id if receivable_account else 0
+            
+        except (ValueError, TypeError):
+            return 0
+
     # ========== CRUD Operations ==========
     
     def write(self, vals):
@@ -335,59 +414,139 @@ class SaatchiCustomizedAccruedRevenue(models.Model):
                 accrued_total_line.with_context(skip_total_update=True).write({
                     'account_id': record.accrual_account_id.id
                 })
-        
+            
     def update_total_accrued_line(self):
         """
         Update or create the Total Accrued line with computed total
         
         For normal accruals: Dr. Total Accrued (sum of credits)
-        For adjustments: Cr. Total Accrued (sum of debits)
+        For adjustments: Flexible based on which side has amounts
+            - If debit lines exist: Cr. Total Accrued (reducing accrual)
+            - If credit lines exist: Dr. Total Accrued (increasing accrual)
         """
         for record in self:
+            # Refresh to get latest lines (prevents duplicate detection issues)
+            record.line_ids.invalidate_recordset(['label'])
+            
+            # Find the Total Accrued line first
+            accrued_total_line = record.line_ids.filtered(lambda l: l.label == 'Total Accrued')
+            
             if record.is_adjustment_entry:
-                # Adjustment: sum debits for credit line
-                debit_lines = record.line_ids.filtered(lambda l: l.label != 'Total Accrued')
-                total = sum(debit_lines.mapped('debit'))
+                # Adjustment: support both directions
+                other_lines = record.line_ids.filtered(lambda l: l.label != 'Total Accrued')
+                total_debit = sum(other_lines.mapped('debit'))
+                total_credit = sum(other_lines.mapped('credit'))
                 
-                accrued_total_line = record.line_ids.filtered(lambda l: l.label == 'Total Accrued')
+                # Determine direction based on which side has amounts
+                if total_debit > 0 and total_credit == 0:
+                    # Dr. Digital Income | Cr. Accrued Revenue (reducing accrual)
+                    total = total_debit
+                    debit_amount = 0.0
+                    credit_amount = total
+                    analytic_distribution = self._calculate_weighted_analytic_distribution(other_lines)
+                elif total_credit > 0 and total_debit == 0:
+                    # Dr. Accrued Revenue | Cr. Digital Income (increasing accrual)
+                    total = total_credit
+                    debit_amount = total
+                    credit_amount = 0.0
+                    analytic_distribution = self._calculate_weighted_analytic_distribution(other_lines)
+                elif total_debit > 0 and total_credit > 0:
+                    # Mixed entries - net the amounts
+                    net_amount = abs(total_debit - total_credit)
+                    if total_debit > total_credit:
+                        # Net debit - so credit Total Accrued
+                        debit_amount = 0.0
+                        credit_amount = net_amount
+                    else:
+                        # Net credit - so debit Total Accrued
+                        debit_amount = net_amount
+                        credit_amount = 0.0
+                    total = net_amount
+                    analytic_distribution = self._calculate_weighted_analytic_distribution(other_lines)
+                else:
+                    # No amounts - delete Total Accrued line if it exists
+                    # if accrued_total_line:
+                    #     accrued_total_line.with_context(skip_total_update=True).unlink()
+                    continue
+                
+                # VALIDATION: Check against CE original amount
+                if record.ce_original_total_amount and total > record.ce_original_total_amount:
+                    raise UserError(_("Total accrued amount cannot exceed the original CE amount."))
+                
+                if not analytic_distribution and record.x_related_ce_id:
+                    if hasattr(record.x_related_ce_id, 'analytic_distribution') and record.x_related_ce_id.analytic_distribution:
+                        analytic_distribution = record.x_related_ce_id.analytic_distribution
                 
                 if total > 0:
                     if accrued_total_line:
-                        analytic_distribution = self._calculate_weighted_analytic_distribution(debit_lines)
+                        # Ensure we only have ONE Total Accrued line
+                        if len(accrued_total_line) > 1:
+                            # Keep the first one, delete the rest
+                            (accrued_total_line[1:]).with_context(skip_total_update=True).unlink()
+                            accrued_total_line = accrued_total_line[0]
                         
-                        if not analytic_distribution and record.x_related_ce_id:
-                            if hasattr(record.x_related_ce_id, 'analytic_distribution') and record.x_related_ce_id.analytic_distribution:
-                                analytic_distribution = record.x_related_ce_id.analytic_distribution
-                        
-                        # Use with_context to prevent recursion
+                        # Update existing line
                         accrued_total_line.with_context(skip_total_update=True).write({
-                            'credit': total,
-                            'debit': 0.0,
+                            'debit': debit_amount,
+                            'credit': credit_amount,
                             'account_id': record.accrual_account_id.id if record.accrual_account_id else accrued_total_line.account_id.id,
                             'currency_id': record.currency_id.id,
                             'analytic_distribution': analytic_distribution,
                         })
-                elif accrued_total_line and total == 0:
+                    else:
+                        # Double-check one more time before creating (in case of race condition)
+                        existing = self.env['saatchi.accrued_revenue_lines'].search([
+                            ('accrued_revenue_id', '=', record.id),
+                            ('label', '=', 'Total Accrued')
+                        ])
+                        if existing:
+                            # Update existing instead of creating
+                            existing.with_context(skip_total_update=True).write({
+                                'debit': debit_amount,
+                                'credit': credit_amount,
+                                'account_id': record.accrual_account_id.id,
+                                'currency_id': record.currency_id.id,
+                                'analytic_distribution': analytic_distribution,
+                            })
+                        else:
+                            # Create new Total Accrued line
+                            self.env['saatchi.accrued_revenue_lines'].with_context(skip_total_update=True).create({
+                                'accrued_revenue_id': record.id,
+                                'label': 'Total Accrued',
+                                'account_id': record.accrual_account_id.id,
+                                'debit': debit_amount,
+                                'credit': credit_amount,
+                                'currency_id': record.currency_id.id,
+                                'analytic_distribution': analytic_distribution,
+                                'sequence': 999,
+                            })
+                elif accrued_total_line:
+                    # Delete if total is 0
                     accrued_total_line.with_context(skip_total_update=True).unlink()
+                    
             else:
                 # Normal accrual: sum credits for debit line
                 credit_lines = record.line_ids.filtered(lambda l: l.label != 'Total Accrued')
                 total = sum(credit_lines.mapped('credit'))
                 
-                accrued_total_line = record.line_ids.filtered(lambda l: l.label == 'Total Accrued')
-                
                 if total > 0:
+                    # VALIDATION: Check against CE original amount
+                    if record.ce_original_total_amount and total > record.ce_original_total_amount:
+                        raise UserError(_("Total accrued amount cannot exceed the original CE amount."))
+                    
+                    analytic_distribution = self._calculate_weighted_analytic_distribution(credit_lines)
+                    
+                    if not analytic_distribution and record.x_related_ce_id:
+                        if hasattr(record.x_related_ce_id, 'analytic_distribution') and record.x_related_ce_id.analytic_distribution:
+                            analytic_distribution = record.x_related_ce_id.analytic_distribution
+                    
                     if accrued_total_line:
-                        if record.ce_original_total_amount and total > record.ce_original_total_amount:
-                            raise UserError(_("Total accrued amount cannot exceed the original CE amount."))
+                        # Ensure we only have ONE Total Accrued line
+                        if len(accrued_total_line) > 1:
+                            (accrued_total_line[1:]).with_context(skip_total_update=True).unlink()
+                            accrued_total_line = accrued_total_line[0]
                         
-                        analytic_distribution = self._calculate_weighted_analytic_distribution(credit_lines)
-                        
-                        if not analytic_distribution and record.x_related_ce_id:
-                            if hasattr(record.x_related_ce_id, 'analytic_distribution') and record.x_related_ce_id.analytic_distribution:
-                                analytic_distribution = record.x_related_ce_id.analytic_distribution
-                        
-                        # Use with_context to prevent recursion
+                        # Update existing line
                         accrued_total_line.with_context(skip_total_update=True).write({
                             'debit': total,
                             'credit': 0.0,
@@ -395,9 +554,36 @@ class SaatchiCustomizedAccruedRevenue(models.Model):
                             'currency_id': record.currency_id.id,
                             'analytic_distribution': analytic_distribution,
                         })
-                elif accrued_total_line and total == 0:
+                    else:
+                        # Double-check before creating
+                        existing = self.env['saatchi.accrued_revenue_lines'].search([
+                            ('accrued_revenue_id', '=', record.id),
+                            ('label', '=', 'Total Accrued')
+                        ])
+                        if existing:
+                            existing.with_context(skip_total_update=True).write({
+                                'debit': total,
+                                'credit': 0.0,
+                                'account_id': record.accrual_account_id.id,
+                                'currency_id': record.currency_id.id,
+                                'analytic_distribution': analytic_distribution,
+                            })
+                        else:
+                            # Create new Total Accrued line
+                            self.env['saatchi.accrued_revenue_lines'].with_context(skip_total_update=True).create({
+                                'accrued_revenue_id': record.id,
+                                'label': 'Total Accrued',
+                                'account_id': record.accrual_account_id.id,
+                                'debit': total,
+                                'credit': 0.0,
+                                'currency_id': record.currency_id.id,
+                                'analytic_distribution': analytic_distribution,
+                                'sequence': 999,
+                            })
+                elif accrued_total_line:
+                    # Delete if total is 0
                     accrued_total_line.with_context(skip_total_update=True).unlink()
-    
+        
     def _calculate_weighted_analytic_distribution(self, lines):
         """
         Calculate weighted analytic distribution from lines
@@ -539,7 +725,8 @@ class SaatchiCustomizedAccruedRevenue(models.Model):
                 'ref': _('Reversal of: %s', move.ref),
                 'name': '/',
                 'date': self.reversal_date,
-                'x_related_custom_accrued_record': self.id
+                'x_related_custom_accrued_record': self.id,
+                'x_accrual_system_generated': self.x_accrual_system_generated,  # Pass through system flag
             }])
             reverse_move._post()
             self.related_reverse_accrued_entry = reverse_move.id
@@ -643,10 +830,10 @@ class SaatchiCustomizedAccruedRevenue(models.Model):
 
         move_currency_id = self.currency_id.id if self.currency_id else company_currency.id
         
-        ref_prefix = '[ADJUSTMENT] ' if self.is_adjustment_entry else 'Accrual - '
-        
+        ref_prefix = 'Adjustment - ' if self.is_adjustment_entry else 'Accrual - '
+    
         move_vals = {
-            'ref': f'{ref_prefix}{self.x_related_ce_id.name if self.x_related_ce_id else self.display_name}',
+            'ref': f'{ref_prefix}{self.ce_code if self.x_related_ce_id else self.display_name}',
             'journal_id': self.journal_id.id,
             'partner_id': self.ce_partner_id.id if self.ce_partner_id else False,
             'date': self.date,
@@ -655,7 +842,7 @@ class SaatchiCustomizedAccruedRevenue(models.Model):
             'line_ids': [(0, 0, line_vals) for line_vals in move_line_vals],
             'x_related_custom_accrued_record': self.id,
             'x_remarks': self.remarks,
-            'x_accrual_system_generated': self.x_accrual_system_generated
+            'x_accrual_system_generated': self.x_accrual_system_generated,  # This will be used in compute
         }
         
         return move_vals
