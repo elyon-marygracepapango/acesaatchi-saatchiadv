@@ -2,3 +2,8 @@
 	path = elyon-github/acesaatchi
 	url = git@github.com:elyon-github/acesaatchi.git
 	branch = Consultant-Test
+
+[submodule "elyon-github/acesaatchi"]
+	path = elyon-github/acesaatchi
+	url = git@github.com:elyon-github/acesaatchi.git
+	branch = Client-Trial
